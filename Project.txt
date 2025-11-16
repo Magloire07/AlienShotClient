@@ -1,0 +1,161 @@
+Objectif final du système
+
+Ma tablette reçoit une photo (depuis mon Sony zv-e 10 ).
+
+Un petit service Android détecte la photo.
+
+Le service lance automatiquement un pipeline OpenCV + ML Kit :
+
+auto-exposition / auto-level
+
+balance des blancs intelligente
+
+upscale + sharpen (comme “Amélioration” de Google Photos)
+
+débruitage
+
+ajustements ambiance / contraste / structure
+
+Le résultat final est enregistré → utilisé ou uploadé automatiquement.
+
+🏗️ Architecture simple du mini-service Android
+
+Tu développes une petite app (Kotlin), sans interface, qui tourne en arrière-plan.
+
+Composants :
+
+FileObserver → détecte l'arrivée d'une nouvelle image.
+
+OpenCV → retouche classique (contraste, sharpen, débruitage…).
+
+ML Kit (Image Enhancement + Segmentation) → améliorations “intelligentes”.
+
+Coroutines → pipeline non bloquant.
+
+WorkManager → garantir l’exécution même si l’app est en arrière-plan.
+
+🧪 Étape 1 — Installer OpenCV dans ton app Android
+
+Dans ton build.gradle (module) :
+
+dependencies {
+    implementation "org.opencv:opencv-android:4.10.0"
+}
+
+
+Initialisation :
+
+OpenCVLoader.initDebug()
+
+🧠 Étape 2 — Ajouter ML Kit Image Enhancement
+
+ML Kit propose plusieurs modèles utiles (et gratuits, offline) :
+
+Auto White Balance
+
+Auto Exposure
+
+Super Resolution (qualité)
+
+Face detection (pour appliquer des retouches ciblées)
+
+Exemple ML Kit :
+
+dependencies {
+    implementation("com.google.mlkit:image-segmentation-selfie:16.0.0")
+    implementation("com.google.mlkit:vision-common:17.2.0")
+}
+
+🔍 Étape 3 — Détection de nouvelle image
+
+Tu surveilles un dossier (/storage/emulated/0/DCIM/Imaging Edge Mobile/) :
+
+val observer = object : FileObserver(watchPath, CREATE) {
+    override fun onEvent(event: Int, path: String?) {
+        if (event == CREATE && path?.endsWith(".jpg") == true) {
+            processImage("$watchPath/$path")
+        }
+    }
+}
+observer.startWatching()
+
+🎨 Étape 4 — Ton pipeline “Google Photos Like”
+
+Voici un pipeline complet, très proche de l’effet “Amélioration Auto” :
+
+▶️ 4.1 — Auto-level
+
+OpenCV :
+
+fun autoLevel(src: Mat): Mat {
+    val dst = Mat()
+    Core.normalize(src, dst, 0.0, 255.0, Core.NORM_MINMAX)
+    return dst
+}
+
+▶️ 4.2 — Balance des blancs intelligente
+
+(ML Kit white balance ou une version OpenCV)
+
+fun whiteBalance(src: Mat): Mat {
+    val lab = Mat()
+    Imgproc.cvtColor(src, lab, Imgproc.COLOR_BGR2Lab)
+    val channels = ArrayList<Mat>()
+    Core.split(lab, channels)
+
+    // CLAHE sur la luminance → effet “ambiance” Google Photos
+    val clahe = Imgproc.createCLAHE()
+    clahe.clipLimit = 2.5
+    clahe.apply(channels[0], channels[0])
+
+    Core.merge(channels, lab)
+    val result = Mat()
+    Imgproc.cvtColor(lab, result, Imgproc.COLOR_Lab2BGR)
+    return result
+}
+
+▶️ 4.3 — Denoise / Lissage léger
+fun denoise(src: Mat): Mat {
+    val dst = Mat()
+    Photo.fastNlMeansDenoisingColored(src, dst, 5f, 5f, 7, 21)
+    return dst
+}
+
+▶️ 4.4 — Sharpen (style “Structure” Google Photos)
+fun sharpen(src: Mat): Mat {
+    val kernel = Mat.ones(3, 3, CvType.CV_32F)
+    kernel.put(1, 1, -7.0)
+    val dst = Mat()
+    Imgproc.filter2D(src, dst, src.depth(), kernel)
+    return dst
+}
+
+▶️ 4.5 — Boost de saturation subtil
+fun boostSaturation(src: Mat): Mat {
+    val hsv = Mat()
+    Imgproc.cvtColor(src, hsv, Imgproc.COLOR_BGR2HSV)
+    val channels = ArrayList<Mat>()
+    Core.split(hsv, channels)
+    Core.multiply(channels[1], Scalar(1.10), channels[1]) // +10%
+    Core.merge(channels, hsv)
+    val dst = Mat()
+    Imgproc.cvtColor(hsv, dst, Imgproc.COLOR_HSV2BGR)
+    return dst
+}
+
+🏁 Étape 5 — Composition du pipeline
+
+Tout en Kotlin, sans main().
+
+suspend fun processImage(path: String) {
+    val src = Imgcodecs.imread(path)
+
+    var img = src
+    img = autoLevel(img)
+    img = whiteBalance(img)
+    img = denoise(img)
+    img = sharpen(img)
+    img = boostSaturation(img)
+
+    Imgcodecs.imwrite(path.replace(".jpg", "_edited.jpg"), img)
+}
