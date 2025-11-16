@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.alienshot"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.alienshot"
@@ -28,11 +28,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
@@ -49,6 +49,19 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    
+    // OpenCV via module local
+    implementation(project(":sdk"))
+
+    // ML Kit Vision (offline)
+    implementation("com.google.mlkit:vision-common:17.3.0")
+
+    // ML Kit segmentation
+    implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta5")
+
+    // WorkManager → exécution en arrière-plan
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
